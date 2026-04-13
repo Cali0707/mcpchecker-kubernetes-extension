@@ -70,7 +70,7 @@ func (e *Extension) registerOperations() {
 						Description: "Timeout duration (e.g., 60s, 5m, default: 60s)",
 					},
 				},
-				Required: []string{"apiVersion", "kind", "metadata", "condition"},
+				Required: []string{"apiVersion", "kind", "metadata"},
 			}),
 		),
 		e.handleWait,
