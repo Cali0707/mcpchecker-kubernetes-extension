@@ -26,9 +26,6 @@ func (e *Extension) handleWait(ctx context.Context, req *sdk.OperationRequest) (
 	}
 
 	condition, _ := args["condition"].(string)
-	if condition == "" {
-		return sdk.Failure(fmt.Errorf("condition is required")), nil
-	}
 
 	status, _ := args["status"].(string)
 	if status == "" {
@@ -66,6 +63,11 @@ func (e *Extension) handleWait(ctx context.Context, req *sdk.OperationRequest) (
 			return false, nil // Keep polling on transient errors
 		}
 
+		// No condition specified — resource exists, that's enough
+		if condition == "" {
+			return true, nil
+		}
+
 		conditions, found, err := unstructured.NestedSlice(obj.Object, "status", "conditions")
 		if err != nil || !found {
 			lastStatus = "NoConditions"
@@ -92,6 +94,16 @@ func (e *Extension) handleWait(ctx context.Context, req *sdk.OperationRequest) (
 	})
 
 	if err != nil {
+		if condition == "" {
+			e.LogError(ctx, "Resource wait timed out", map[string]any{
+				"kind": ref.kind,
+				"name": ref.name,
+			})
+			return sdk.FailureWithMessage(
+				fmt.Sprintf("Resource %s/%s not found", ref.kind, ref.name),
+				fmt.Errorf("timed out waiting for %s/%s to exist", ref.kind, ref.name),
+			), nil
+		}
 		e.LogError(ctx, "Condition wait timed out", map[string]any{
 			"kind":       ref.kind,
 			"name":       ref.name,
@@ -102,6 +114,14 @@ func (e *Extension) handleWait(ctx context.Context, req *sdk.OperationRequest) (
 			fmt.Sprintf("Condition %s=%s not met", condition, status),
 			fmt.Errorf("timed out waiting for %s/%s: last status was %s", ref.kind, ref.name, lastStatus),
 		), nil
+	}
+
+	if condition == "" {
+		e.LogInfo(ctx, "Resource exists", map[string]any{
+			"kind": ref.kind,
+			"name": ref.name,
+		})
+		return sdk.Success(fmt.Sprintf("%s/%s exists", ref.kind, ref.name)), nil
 	}
 
 	e.LogInfo(ctx, "Condition met", map[string]any{

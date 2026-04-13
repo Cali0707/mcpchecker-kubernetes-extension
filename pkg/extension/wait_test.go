@@ -2,6 +2,7 @@ package extension
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/mcpchecker/mcpchecker/pkg/extension/sdk"
@@ -65,13 +66,99 @@ func TestHandleWait(t *testing.T) {
 			wantSuccess: false,
 		},
 		{
-			name: "missing condition field",
+			name: "missing condition field checks existence",
 			args: map[string]any{
 				"apiVersion": "v1",
 				"kind":       "Pod",
 				"metadata":   map[string]any{"name": "test"},
+				"timeout":    "1s",
 			},
-			client:      &mockClient{},
+			client: &mockClient{
+				getFn: func(ctx context.Context, gvr schema.GroupVersionResource, name, namespace string) (*unstructured.Unstructured, error) {
+					return &unstructured.Unstructured{
+						Object: map[string]any{
+							"apiVersion": "v1",
+							"kind":       "Pod",
+							"metadata":   map[string]any{"name": "test"},
+						},
+					}, nil
+				},
+			},
+			wantSuccess: true,
+		},
+		{
+			name: "no condition - resource not found times out",
+			args: map[string]any{
+				"apiVersion": "v1",
+				"kind":       "Pod",
+				"metadata":   map[string]any{"name": "test"},
+				"timeout":    "1s",
+			},
+			client: &mockClient{
+				getFn: func(ctx context.Context, gvr schema.GroupVersionResource, name, namespace string) (*unstructured.Unstructured, error) {
+					return nil, fmt.Errorf("not found")
+				},
+			},
+			wantSuccess: false,
+		},
+		{
+			name: "no condition - succeeds when resource exists",
+			args: map[string]any{
+				"apiVersion": "networking.istio.io/v1",
+				"kind":       "Gateway",
+				"metadata":   map[string]any{"name": "my-gateway", "namespace": "istio-system"},
+				"timeout":    "2s",
+			},
+			client: &mockClient{
+				getFn: func(ctx context.Context, gvr schema.GroupVersionResource, name, namespace string) (*unstructured.Unstructured, error) {
+					return &unstructured.Unstructured{
+						Object: map[string]any{
+							"apiVersion": "networking.istio.io/v1",
+							"kind":       "Gateway",
+							"metadata": map[string]any{
+								"name":      "my-gateway",
+								"namespace": "istio-system",
+							},
+							"spec": map[string]any{
+								"selector": map[string]any{
+									"istio": "ingressgateway",
+								},
+							},
+						},
+					}, nil
+				},
+			},
+			wantSuccess: true,
+		},
+		{
+			name: "resource without status.conditions times out (e.g. Istio Gateway)",
+			args: map[string]any{
+				"apiVersion": "networking.istio.io/v1",
+				"kind":       "Gateway",
+				"metadata":   map[string]any{"name": "my-gateway", "namespace": "istio-system"},
+				"condition":  "Available",
+				"status":     "True",
+				"timeout":    "2s",
+			},
+			client: &mockClient{
+				getFn: func(ctx context.Context, gvr schema.GroupVersionResource, name, namespace string) (*unstructured.Unstructured, error) {
+					return &unstructured.Unstructured{
+						Object: map[string]any{
+							"apiVersion": "networking.istio.io/v1",
+							"kind":       "Gateway",
+							"metadata": map[string]any{
+								"name":      "my-gateway",
+								"namespace": "istio-system",
+							},
+							"spec": map[string]any{
+								"selector": map[string]any{
+									"istio": "ingressgateway",
+								},
+							},
+						},
+					}, nil
+				},
+			},
 			wantSuccess: false,
 		},
 	}
